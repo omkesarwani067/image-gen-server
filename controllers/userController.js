@@ -1,76 +1,60 @@
-
 import userModel from "../models/userModels.js";
-import bcrypt from 'bcrypt'
-import jwt from 'jsonwebtoken'
-import razorpay from 'razorpay'
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import razorpay from 'razorpay';
 import transactionModel from "../models/transactionModel.js";
-import { SchemaTypeOptions } from "mongoose";
 
 const registerUser = async (req, res) => {
     try {
         const { name, email, password } = req.body;
 
         if (!name || !email || !password) {
-            return res.json({ success: false, message: 'Missing Details' })
+            return res.json({ success: false, message: 'Missing Details' });
         }
 
-        const salt = await bcrypt.genSalt(10)
-        const hashedPassword = await bcrypt.hash(password, salt)
+        const existingUser = await userModel.findOne({ email });
+        if (existingUser) return res.json({ success: false, message: "User already exists" });
 
-        const userData = {
-            name,
-            email,
-            password: hashedPassword
-        }
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
-        const newUser = new userModel(userData)
-        const user = await newUser.save()
+        const newUser = new userModel({ name, email, password: hashedPassword });
+        const user = await newUser.save();
 
-        const token = jwt.sign({ id: user._id}, process.env.JWT_SECRET)
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
 
         res.json({ success: true, token, user: { name: user.name, creditBalance: user.creditBalance } });
 
     } catch (error) {
-        console.log(error)
-        res.json({ success: false, message: error.message })
+        console.log(error);
+        res.json({ success: false, message: error.message });
     }
-}
+};
 
 const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await userModel.findOne({ email })
+        const user = await userModel.findOne({ email });
 
-        if (!user) {
-            return res.json({ success: false, message: 'User does not exist' })
-        }
+        if (!user) return res.json({ success: false, message: 'User does not exist' });
 
-        const isMatch = await bcrypt.compare(password, user.password)
+        const isMatch = await bcrypt.compare(password, user.password);
 
         if (isMatch) {
-            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET)
-
+            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
             res.json({ success: true, token, user: { name: user.name, creditBalance: user.creditBalance } });
-
         } else {
-            return res.json({ success: false, message: 'Invalid credentials' })
+            return res.json({ success: false, message: 'Invalid credentials' });
         }
-
-
     } catch (error) {
-        console.log(error)
-        res.json({ success: false, message: error.message })
+        console.log(error);
+        res.json({ success: false, message: error.message });
     }
-}
-
+};
 
 const userCredits = async (req, res) => {
     try {
-        const token = req.headers.token;
-        if (!token) return res.json({ success: false, message: 'No token provided' });
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await userModel.findById(decoded.id);
+        const user = await userModel.findById(req.userId);
         if (!user) return res.json({ success: false, message: 'User not found' });
 
         res.json({
@@ -90,75 +74,35 @@ const razorpayInstance = new razorpay({
 });
 
 const paymentRazorpay = async (req, res) => {
-    try { 
-        const { userId, planId } = req.body
+    try {
+        const { planId } = req.body;
+        const userId = req.userId;
 
-        const userData = await userModel.findById(userId)
+        if (!userId || !planId) return res.json({ success: false, message: 'Missing details' });
 
-        if (!userId || !planId) {
-            return res.json({ success: false,
-                 message: 'Missing details' });
-        }
-
-        let credits, plan, amount, date;
-
+        let credits, plan, amount;
         switch (planId) {
-            case 'Basic':
-                credits = 100;
-                plan = 'Basic';
-                amount = 10;
-                date = new Date();
-                break;
-            case 'Advanced':
-                credits = 500;
-                plan = 'Advanced';
-                amount = 50;
-                date = new Date();
-                break;
-            case 'Business':
-                credits = 5000;
-                plan = 'Business';
-                amount = 250;
-                date = new Date();
-                break;
-            default:
-                return res.json({ success: false, message: 'Invalid plan' });
+            case 'Basic': credits = 100; plan = 'Basic'; amount = 10; break;
+            case 'Advanced': credits = 500; plan = 'Advanced'; amount = 50; break;
+            case 'Business': credits = 5000; plan = 'Business'; amount = 250; break;
+            default: return res.json({ success: false, message: 'Invalid plan' });
         }
 
-        const transaction = {
-            userId,
-            plan,
-            credits,
-            amount,
-            date
-        };
-        const newTransaction = await transactionModel.create(transaction);
+        const transaction = await transactionModel.create({ userId, plan, credit: credits, amount });
 
         const options = {
-            amount: amount * 100, // Amount in paise
+            amount: amount * 100,
             currency: process.env.CURRENCY,
-            receipt: newTransaction._id.toString(),
-            
+            receipt: transaction._id.toString(),
         };
 
-        await razorpayInstance.orders.create(options,(error,order)=>{
-           if (error) {
-                console.log(error);
-                return res.json({ success: false, message: 'Error creating order' });
-            }
-            res.json({success: true, order})
-        })
+        const order = await razorpayInstance.orders.create(options);
+        res.json({ success: true, order });
 
-
-     }
-    catch (error) {
+    } catch (error) {
         console.log(error);
         res.json({ success: false, message: error.message });
     }
-}
+};
 
-
-
-
-export  {registerUser, loginUser, userCredits, paymentRazorpay};
-
+export { registerUser, loginUser, userCredits, paymentRazorpay };
