@@ -4,10 +4,10 @@ const transactionSchema = new mongoose.Schema({
     userId: { type: String, required: true },
     plan: { type: String, required: true },
     amount: { type: Number, required: true },
-    credit: { type: Number, required: true },
+    credits: { type: Number, required: true },
     payment: { type: Boolean, default: false },
-    date: { type: Date, default: Date.now }
-}, { timestamps: true });
+    date: { type: Number },
+})
 
 const transactionModel = mongoose.models.transaction || mongoose.model("transaction", transactionSchema);
 

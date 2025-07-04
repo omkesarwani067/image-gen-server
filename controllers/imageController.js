@@ -4,12 +4,13 @@ import FormData from 'form-data';
 
 export const generateImage = async (req, res) => {
     try {
-        const { prompt } = req.body;
-        const user = await userModel.findById(req.userId);
+        const { userId, prompt } = req.body;
+        const user = await userModel.findById(userId);
 
         if (!user || !prompt) return res.json({ success: false, message: 'Missing Details' });
 
-        if (user.creditBalance <= 0) return res.json({ success: false, message: 'No Credit Balance', creditBalance: user.creditBalance });
+        if (user.creditBalance === 0 || user.creditBalance < 0) 
+            return res.json({ success: false, message: 'No Credit Balance', creditBalance: user.creditBalance });
 
         const formData = new FormData();
         formData.append('prompt', prompt);
