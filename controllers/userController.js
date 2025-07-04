@@ -35,7 +35,7 @@ export const registerUser = async (req, res) => {
     }
 };
 
-const loginUser = async (req, res) => {
+export const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
         const user = await userModel.findOne({ email });
@@ -56,7 +56,7 @@ const loginUser = async (req, res) => {
     }
 };
 
-const userCredits = async (req, res) => {
+export const userCredits = async (req, res) => {
     try {
         const { userId} = req.body;
         const user = await userModel.findById(req.userId);
