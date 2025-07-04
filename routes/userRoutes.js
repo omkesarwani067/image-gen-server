@@ -1,6 +1,6 @@
 import { registerUser, loginUser, userCredits, paymentRazorpay, verifyRazorPay } from "../controllers/userController.js"
 import express from "express"
-import userAuth from "../middlewares.js/auth.js"
+import { userAuth } from "../middlewares/userAuth.js"
 
 
 const userRouter = express.Router()
