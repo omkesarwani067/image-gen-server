@@ -1,4 +1,4 @@
-import { registerUser, loginUser, userCredits, paymentRazorpay, verifyRazorPay } from "../controllers/userController.js"
+import { registerUser, loginUser, userCredits, paymentRazorpay } from "../controllers/userController.js"
 import express from "express"
 import userAuth from "../middleware/auth.js"
 
