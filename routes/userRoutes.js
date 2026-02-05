@@ -1,6 +1,7 @@
 import { registerUser, loginUser, userCredits, paymentRazorpay, verifyPayment } from "../controllers/userController.js"
 import express from "express"
 import userAuth from "../middleware/auth.js"
+import userModel from "../models/userModels.js"
 
 const userRouter = express.Router()
 
@@ -11,7 +12,7 @@ userRouter.post("/login", loginUser)
 // Protected routes (authentication required)
 userRouter.get("/credits", userAuth, userCredits)
 userRouter.post("/pay-razor", userAuth, paymentRazorpay)
-userRouter.post("/verify-payment", userAuth, verifyPayment) // NEW - Payment verification endpoint
+userRouter.post("/verify-razor", userAuth, verifyPayment) // ADDED: Payment verification endpoint
 
 // Additional helpful endpoints
 userRouter.get("/profile", userAuth, async (req, res) => {

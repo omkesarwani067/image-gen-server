@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import razorpay from 'razorpay';
 import transactionModel from "../models/transactionModel.js";
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -49,25 +50,25 @@ export const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const newUser = new userModel({ 
-            name: name.trim(), 
-            email: email.toLowerCase().trim(), 
-            password: hashedPassword 
+        const newUser = new userModel({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            password: hashedPassword
         });
         const user = await newUser.save();
 
         // Added token expiration - CRITICAL FIX
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-        res.json({ 
-            success: true, 
-            token, 
-            user: { 
+        res.json({
+            success: true,
+            token,
+            user: {
                 id: user._id,
-                name: user.name, 
+                name: user.name,
                 email: user.email,
-                creditBalance: user.creditBalance 
-            } 
+                creditBalance: user.creditBalance
+            }
         });
 
     } catch (error) {
@@ -100,16 +101,16 @@ export const loginUser = async (req, res) => {
 
         // Added token expiration - CRITICAL FIX
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        
-        res.json({ 
-            success: true, 
-            token, 
-            user: { 
+
+        res.json({
+            success: true,
+            token,
+            user: {
                 id: user._id,
-                name: user.name, 
+                name: user.name,
                 email: user.email,
-                creditBalance: user.creditBalance 
-            } 
+                creditBalance: user.creditBalance
+            }
         });
 
     } catch (error) {
@@ -129,11 +130,11 @@ export const userCredits = async (req, res) => {
         res.json({
             success: true,
             credits: user.creditBalance,
-            user: { 
+            user: {
                 id: user._id,
-                name: user.name, 
+                name: user.name,
                 email: user.email,
-                creditBalance: user.creditBalance 
+                creditBalance: user.creditBalance
             }
         });
     } catch (error) {
@@ -146,47 +147,47 @@ export const paymentRazorpay = async (req, res) => {
     try {
         const { planId } = req.body;
         const userId = req.userId; // Use from middleware
-        
+
         if (!userId || !planId) {
             return res.json({ success: false, message: 'Missing details' });
         }
-        
+
         const userData = await userModel.findById(userId);
         if (!userData) {
             return res.json({ success: false, message: 'User not found' });
         }
-        
+
         let credits, plan, amount;
-        
+
         // Enhanced plan validation
         switch (planId) {
-            case 'Basic': 
-                credits = 100; 
-                plan = 'Basic'; 
-                amount = 10; 
+            case 'Basic':
+                credits = 100;
+                plan = 'Basic';
+                amount = 10;
                 break;
-            case 'Advanced': 
-                credits = 500; 
-                plan = 'Advanced'; 
-                amount = 50; 
+            case 'Advanced':
+                credits = 500;
+                plan = 'Advanced';
+                amount = 50;
                 break;
-            case 'Business': 
-                credits = 5000; 
-                plan = 'Business'; 
-                amount = 250; 
+            case 'Business':
+                credits = 5000;
+                plan = 'Business';
+                amount = 250;
                 break;
-            default: 
+            default:
                 return res.json({ success: false, message: 'Invalid plan selected' });
         }
-        
+
         const date = Date.now();
-        
+
         // Create transaction record first
         const transactionData = {
-            userId, 
-            plan, 
-            amount, 
-            credits, 
+            userId,
+            plan,
+            amount,
+            credits,
             date,
             payment: false // Will be updated on successful payment
         };
@@ -203,8 +204,13 @@ export const paymentRazorpay = async (req, res) => {
         // CRITICAL FIX - Proper Razorpay integration
         try {
             const order = await razorpayInstance.orders.create(options);
-            return res.json({ 
-                success: true, 
+
+            // FIXED: Store order ID in transaction for verification
+            newTransaction.orderId = order.id;
+            await newTransaction.save();
+
+            return res.json({
+                success: true,
                 order,
                 key: process.env.RAZORPAY_KEY_ID // Send key for frontend
             });
@@ -212,9 +218,9 @@ export const paymentRazorpay = async (req, res) => {
             console.error('Razorpay error:', razorpayError);
             // Delete the transaction if order creation fails
             await transactionModel.findByIdAndDelete(newTransaction._id);
-            return res.json({ 
-                success: false, 
-                message: 'Payment gateway error. Please try again.' 
+            return res.json({
+                success: false,
+                message: razorpayError.error ? razorpayError.error.description : razorpayError.message
             });
         }
 
@@ -224,30 +230,29 @@ export const paymentRazorpay = async (req, res) => {
     }
 };
 
-// New function to verify payment and update credits
+// FIXED: Payment verification function
 export const verifyPayment = async (req, res) => {
     try {
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
         const userId = req.userId;
 
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            return res.json({ success: false, message: 'Payment verification failed' });
+            return res.json({ success: false, message: 'Payment verification failed - missing parameters' });
         }
 
-        // Verify signature (implement signature verification)
-        const crypto = require('crypto');
+        // Verify signature
         const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
         hmac.update(razorpay_order_id + '|' + razorpay_payment_id);
         const generated_signature = hmac.digest('hex');
 
         if (generated_signature !== razorpay_signature) {
-            return res.json({ success: false, message: 'Payment verification failed' });
+            return res.json({ success: false, message: 'Payment verification failed - invalid signature' });
         }
 
-        // Find and update transaction
-        const transaction = await transactionModel.findOne({ 
-            userId, 
-            _id: razorpay_order_id.replace('order_', '') 
+        // FIXED: Find transaction by orderId instead of _id
+        const transaction = await transactionModel.findOne({
+            userId,
+            orderId: razorpay_order_id
         });
 
         if (!transaction) {
@@ -256,6 +261,9 @@ export const verifyPayment = async (req, res) => {
 
         // Update transaction status
         transaction.payment = true;
+        transaction.paymentId = razorpay_payment_id;
+        transaction.signature = razorpay_signature;
+        transaction.status = 'completed';
         await transaction.save();
 
         // Update user credits atomically
